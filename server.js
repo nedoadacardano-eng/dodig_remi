@@ -1,15 +1,508 @@
 const express = require('express');
 const http = require('http');
 const { WebSocketServer } = require('ws');
-const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Serve static frontend
-app.use(express.static(path.join(__dirname, 'public')));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+const INDEX_HTML = `
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>DodigRemi</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a1f12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --felt:#1a472a;--felt-dark:#0a1f12;
+  --gold:#c9a84c;--gold-lt:#e8c96d;--gold-dim:#8a6f2e;
+  --card:#fefefe;--card-sh:rgba(0,0,0,.4);
+  --txt:#f0e8d8;--muted:#a0937a;
+  --red:#c0392b;--blk:#1a1a2e;--joker:#7c3aed;
+  --ok:#27ae60;--del:#c0392b;--blue:#1d6fa5;--purple:#6d28d9;
+  --sel-glow:rgba(201,168,76,.6);--overlay:rgba(0,0,0,.9);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--felt-dark);font-family:'DM Sans',system-ui,sans-serif;color:var(--txt)}
+
+.screen{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden}
+.hidden{display:none!important}
+
+/* LOBBY */
+#lobby{background:radial-gradient(ellipse at top,#1e5c31 0%,#0a1f12 100%);overflow-y:auto;align-items:center;padding:2rem 1.25rem 4rem;gap:0}
+.logo{font-family:'Playfair Display',serif;font-size:2.8rem;font-weight:900;color:var(--gold);letter-spacing:.05em;text-align:center;line-height:1;margin-bottom:.2rem;margin-top:.5rem}
+.tagline{font-size:.75rem;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;text-align:center;margin-bottom:.75rem}
+.suits{display:flex;gap:.75rem;font-size:1.4rem;margin-bottom:1.5rem}
+.suits span:nth-child(odd){color:var(--red)}.suits span:nth-child(even){color:var(--muted)}
+.cbox{background:rgba(255,255,255,.06);border:1px solid rgba(201,168,76,.22);border-radius:14px;padding:1.1rem;width:100%;max-width:380px;margin-bottom:.65rem}
+.lbl{font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:.55rem}
+.inp{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(201,168,76,.22);border-radius:9px;color:var(--txt);font-family:inherit;font-size:1rem;padding:.7rem .9rem;outline:none}
+.inp::placeholder{color:var(--muted)}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:.35rem;margin-bottom:.7rem}
+.tab{background:rgba(255,255,255,.06);border:1.5px solid rgba(201,168,76,.22);border-radius:9px;color:var(--txt);font-family:inherit;font-size:.88rem;font-weight:600;padding:.65rem;cursor:pointer;transition:all .15s}
+.tab.on{background:var(--gold);border-color:var(--gold);color:#1a1a2e}
+.cnts{display:grid;grid-template-columns:repeat(3,1fr);gap:.35rem}
+.cnt{background:rgba(255,255,255,.06);border:1.5px solid rgba(201,168,76,.28);border-radius:9px;color:var(--txt);font-family:inherit;font-size:1.1rem;font-weight:600;padding:.72rem;cursor:pointer;transition:all .15s}
+.cnt.on{background:var(--gold);border-color:var(--gold);color:#1a1a2e}
+.code-inp{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(201,168,76,.22);border-radius:9px;color:var(--txt);font-family:inherit;font-size:1.8rem;font-weight:700;padding:.55rem .9rem;text-align:center;letter-spacing:.25em;text-transform:uppercase;outline:none}
+.btn-p{width:100%;max-width:380px;background:linear-gradient(135deg,var(--gold),var(--gold-lt));border:none;border-radius:11px;color:#1a1a2e;font-family:inherit;font-size:.95rem;font-weight:700;letter-spacing:.04em;padding:.9rem;cursor:pointer;margin-top:.4rem;text-transform:uppercase}
+.btn-p:disabled{opacity:.4;cursor:not-allowed}
+.code-big{font-family:'Playfair Display',serif;font-size:3rem;font-weight:900;color:var(--gold);letter-spacing:.15em;text-align:center}
+.code-sub{font-size:.7rem;color:var(--muted);text-align:center;margin-top:.2rem}
+.wait-list{display:flex;flex-direction:column;gap:.35rem;margin-top:.5rem}
+.wait-p{display:flex;align-items:center;gap:.55rem;background:rgba(255,255,255,.05);border-radius:7px;padding:.45rem .7rem;font-size:.88rem}
+.wdot{width:7px;height:7px;border-radius:50%;background:var(--ok);flex-shrink:0}
+.errmsg{color:#f87171;font-size:.78rem;text-align:center;min-height:1.1em;margin-top:.2rem;max-width:380px}
+
+/* GAME */
+#game{background:var(--felt-dark)}
+.gh{background:rgba(0,0,0,.55);border-bottom:1px solid rgba(201,168,76,.18);padding:.42rem .7rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.gt{font-family:'Playfair Display',serif;font-size:1rem;color:var(--gold);font-weight:700}
+.gr{font-size:.62rem;color:var(--muted);letter-spacing:.07em}
+.gsb{background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.28);border-radius:7px;color:var(--gold);font-size:.7rem;font-weight:600;padding:.28rem .55rem;cursor:pointer}
+.pb{background:linear-gradient(135deg,rgba(201,168,76,.12),rgba(201,168,76,.03));border-bottom:1px solid rgba(201,168,76,.2);padding:.42rem .7rem;display:flex;align-items:center;gap:.5rem;flex-shrink:0}
+.av{width:32px;height:32px;border-radius:50%;background:var(--gold-dim);color:#1a1a2e;font-weight:700;font-size:.78rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:2px solid var(--gold)}
+.pn{font-size:.95rem;font-weight:600;color:var(--gold-lt)}
+.ps{font-size:.62rem;color:var(--muted)}
+.ph{margin-left:auto;background:rgba(201,168,76,.16);border:1px solid rgba(201,168,76,.32);border-radius:5px;padding:.16rem .42rem;font-size:.6rem;letter-spacing:.06em;color:var(--gold-lt);text-transform:uppercase;white-space:nowrap}
+.ta{flex:1;overflow-y:auto;padding:.45rem .45rem 0;background:var(--felt);background-image:radial-gradient(ellipse at center,rgba(45,106,66,.3) 0%,transparent 70%)}
+.dr{display:flex;gap:.6rem;align-items:flex-start;margin-bottom:.6rem}
+.pile{cursor:pointer;flex-shrink:0}
+.cv{width:48px;height:70px;border-radius:7px;border:1.5px solid rgba(255,255,255,.12);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.9rem;font-weight:700;transition:transform .1s;user-select:none;position:relative}
+.cv:active{transform:scale(.91)}
+.cv.back{background:linear-gradient(135deg,#1a3a5c,#0d2438);border-color:rgba(201,168,76,.38);background-image:repeating-linear-gradient(45deg,rgba(201,168,76,.05) 0px,rgba(201,168,76,.05) 1px,transparent 1px,transparent 8px)}
+.cv.face{background:var(--card);color:var(--blk);box-shadow:2px 3px 8px var(--card-sh)}
+.cv.face.r{color:var(--red)}.cv.face.j{color:var(--joker);background:linear-gradient(135deg,#fefefe,#f0e8ff)}
+.dcnt{position:absolute;bottom:-5px;right:-5px;background:var(--gold);color:#1a1a2e;font-size:.56rem;font-weight:700;border-radius:9px;padding:1px 4px;min-width:16px;text-align:center}
+.plbl{font-size:.56rem;color:var(--muted);text-align:center;margin-top:3px;letter-spacing:.06em;text-transform:uppercase}
+.edis{width:48px;height:70px;border-radius:7px;border:1.5px dashed rgba(201,168,76,.26);display:flex;align-items:center;justify-content:center;font-size:1rem;color:rgba(201,168,76,.28)}
+.oi{margin-left:auto;text-align:right}
+.oilbl{font-size:.58rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:1px}
+.oival{font-size:.78rem;color:var(--gold-lt);font-weight:600}
+.oipts{font-size:.6rem;color:var(--muted);margin-top:1px}
+.mtlbl{font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:.32rem;padding-left:1px}
+.mwrap{display:flex;flex-direction:column;gap:.4rem;margin-bottom:.45rem}
+.mr{background:rgba(0,0,0,.2);border:1px solid rgba(201,168,76,.13);border-radius:8px;padding:.42rem;cursor:pointer;transition:border-color .12s}
+.mr.sel{border-color:var(--gold);background:rgba(201,168,76,.06)}
+.mo{font-size:.56rem;color:var(--muted);margin-bottom:.25rem;letter-spacing:.05em}
+.mcr{display:flex;flex-wrap:wrap;gap:3px}
+.mc{width:34px;height:50px;border-radius:5px;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--blk);border:1px solid rgba(0,0,0,.07);box-shadow:1px 2px 3px var(--card-sh)}
+.mc.r{color:var(--red)}.mc.j{color:var(--joker);background:linear-gradient(135deg,#fefefe,#f0e8ff)}
+.jl{font-size:.44rem;font-weight:700;letter-spacing:.04em;color:var(--joker)}
+.ha{background:rgba(0,0,0,.44);border-top:1px solid rgba(201,168,76,.16);padding:.42rem .42rem .38rem;flex-shrink:0}
+.hh{display:flex;align-items:center;justify-content:space-between;margin-bottom:.32rem}
+.hlbl{font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.hcnt{font-size:.65rem;color:var(--gold-dim)}
+.hcards{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:.38rem}
+.hc{width:42px;height:62px;border-radius:7px;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:2px solid transparent;box-shadow:2px 3px 8px var(--card-sh);transition:transform .1s,box-shadow .1s;user-select:none;font-weight:700;color:var(--blk)}
+.hc.r{color:var(--red)}.hc.j{color:var(--joker);background:linear-gradient(135deg,#fefefe,#f0e8ff)}
+.hc.s{border-color:var(--gold);transform:translateY(-8px);box-shadow:0 0 10px var(--sel-glow),2px 3px 8px var(--card-sh)}
+.hc:active{transform:scale(.91)}.hc.s:active{transform:translateY(-8px) scale(.91)}
+.hr{font-size:.82rem;line-height:1.1}.hs{font-size:.72rem;line-height:1}
+.aa{background:rgba(0,0,0,.54);border-top:1px solid rgba(255,255,255,.05);padding:.42rem;flex-shrink:0}
+.ag{display:grid;grid-template-columns:1fr 1fr;gap:.32rem}
+.ab{border:none;border-radius:8px;font-family:inherit;font-size:.7rem;font-weight:600;padding:.52rem .28rem;cursor:pointer;transition:opacity .1s,transform .1s;letter-spacing:.02em;text-align:center;line-height:1.2}
+.ab:active{transform:scale(.93)}.ab:disabled{opacity:.3;cursor:not-allowed;transform:none}
+.ab.gold{background:var(--gold);color:#1a1a2e}.ab.green{background:var(--ok);color:#fff}
+.ab.red{background:var(--del);color:#fff}.ab.blue{background:var(--blue);color:#fff}
+.ab.purple{background:var(--purple);color:#fff}.ab.gray{background:rgba(255,255,255,.09);color:var(--txt);border:1px solid rgba(255,255,255,.07)}
+.ab.full{grid-column:1/-1}
+.nmt{display:flex;align-items:center;justify-content:center;padding:.55rem;font-size:.78rem;color:var(--muted);font-style:italic}
+
+/* TOAST */
+.toast{position:fixed;top:68px;left:50%;transform:translateX(-50%);background:rgba(12,12,22,.96);border:1px solid rgba(201,168,76,.35);border-radius:10px;padding:.55rem .95rem;font-size:.8rem;color:var(--txt);z-index:1000;max-width:88vw;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap}
+.toast.show{opacity:1}.toast.err{border-color:rgba(192,57,43,.58)}.toast.ok{border-color:rgba(39,174,96,.58);color:#a8e6b8}
+
+/* MODAL */
+.ov{position:fixed;inset:0;background:var(--overlay);z-index:500;display:flex;align-items:center;justify-content:center;padding:.9rem}
+.mb{background:#0f2d1a;border:1px solid rgba(201,168,76,.3);border-radius:15px;padding:1.3rem;width:100%;max-width:400px;max-height:85vh;overflow-y:auto}
+.mt{font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--gold);margin-bottom:.85rem;text-align:center}
+.stbl{width:100%;border-collapse:collapse;font-size:.8rem}
+.stbl th{text-align:left;padding:.32rem .42rem;color:var(--muted);font-size:.64rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid rgba(201,168,76,.12)}
+.stbl td{padding:.42rem .42rem;border-bottom:1px solid rgba(255,255,255,.05);color:var(--txt)}
+.stbl tr:last-child td{border-bottom:none}
+.st{font-weight:700;color:var(--gold-lt)}.sn{color:#6ee89f}.sh{color:#f87171}
+.mbt{width:100%;margin-top:.55rem;border:none;border-radius:9px;font-family:inherit;font-size:.85rem;font-weight:600;padding:.7rem;cursor:pointer}
+.mbt.p{background:var(--gold);color:#1a1a2e;font-weight:700}.mbt.s{background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.28);color:var(--gold)}
+.psr{display:flex;justify-content:space-between;align-items:center;padding:.42rem 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.psr:last-child{border-bottom:none}
+.wb{background:var(--gold);color:#1a1a2e;font-size:.56rem;font-weight:700;padding:2px 5px;border-radius:4px;letter-spacing:.05em;text-transform:uppercase}
+.odot{width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:3px}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:rgba(201,168,76,.28);border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- LOBBY -->
+<div class="screen" id="lobby">
+  <div class="logo">DodigRemi</div>
+  <div class="tagline">Balkanski Remi · Multiplayer</div>
+  <div class="suits"><span>♥</span><span>♠</span><span>♣</span><span>♦</span></div>
+
+  <div class="cbox">
+    <div class="lbl">Tvoje ime</div>
+    <input class="inp" id="my-name" placeholder="Unesi ime..." maxlength="16" autocomplete="off">
+  </div>
+
+  <div class="cbox" id="main-box">
+    <div class="tabs">
+      <button class="tab on" id="tab-c" onclick="switchTab('c')">Kreiraj sobu</button>
+      <button class="tab" id="tab-j" onclick="switchTab('j')">Pridruži se</button>
+    </div>
+    <div id="pane-c">
+      <div class="lbl">Broj igrača</div>
+      <div class="cnts" style="margin-bottom:.7rem">
+        <button class="cnt on" onclick="setMax(2)">2</button>
+        <button class="cnt" onclick="setMax(3)">3</button>
+        <button class="cnt" onclick="setMax(4)">4</button>
+      </div>
+      <button class="btn-p" onclick="createRoom()">Kreiraj sobu</button>
+    </div>
+    <div id="pane-j" class="hidden">
+      <div class="lbl">Kôd sobe (4 slova)</div>
+      <input class="code-inp" id="room-code-inp" placeholder="ABCD" maxlength="4" autocomplete="off">
+      <button class="btn-p" onclick="joinRoom()" style="margin-top:.55rem">Pridruži se</button>
+    </div>
+  </div>
+
+  <div class="cbox hidden" id="wait-box">
+    <div style="text-align:center;background:rgba(201,168,76,.09);border:1px solid rgba(201,168,76,.3);border-radius:10px;padding:.9rem;margin-bottom:.65rem">
+      <div class="code-big" id="code-show">----</div>
+      <div class="code-sub">Pošalji ovaj kôd ostalim igračima</div>
+    </div>
+    <div class="lbl">Igrači u sobi</div>
+    <div class="wait-list" id="wait-list"></div>
+    <button class="btn-p hidden" id="btn-start" onclick="startGame()" style="margin-top:.7rem">▶ Započni igru</button>
+  </div>
+
+  <div class="errmsg" id="errmsg"></div>
+</div>
+
+<!-- GAME -->
+<div class="screen hidden" id="game">
+  <div class="gh">
+    <div>
+      <div class="gt">DodigRemi</div>
+      <div class="gr" id="g-round">Krug 1 · Partija 1</div>
+    </div>
+    <button class="gsb" onclick="showScores()">Rezultati</button>
+  </div>
+  <div class="pb">
+    <div class="av" id="g-av"></div>
+    <div>
+      <div class="pn" id="g-name"></div>
+      <div class="ps" id="g-sub"></div>
+    </div>
+    <div class="ph" id="g-ph">Vuci</div>
+  </div>
+  <div class="ta" id="ta">
+    <div class="dr">
+      <div class="pile" onclick="act('drawDeck')">
+        <div class="cv back"><div class="dcnt" id="dcnt">0</div></div>
+        <div class="plbl">Špil</div>
+      </div>
+      <div class="pile" onclick="act('drawDiscard')">
+        <div id="dis-vis"></div>
+        <div class="plbl">Discard</div>
+      </div>
+      <div class="oi">
+        <div class="oilbl">Otvaranje</div>
+        <div class="oival" id="oi-val">51+</div>
+        <div class="oipts" id="oi-pts">Odabrano: 0</div>
+      </div>
+    </div>
+    <div class="mtlbl">Karte na stolu</div>
+    <div class="mwrap" id="mwrap">
+      <div style="font-size:.73rem;color:var(--muted);font-style:italic;padding:.35rem 0">Još nema otvorenih kombinacija</div>
+    </div>
+  </div>
+  <div class="ha">
+    <div class="hh">
+      <div class="hlbl">Moje karte</div>
+      <div class="hcnt" id="hcnt"></div>
+    </div>
+    <div class="hcards" id="hcards"></div>
+  </div>
+  <div class="aa" id="aa"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// Auto-detect WebSocket URL from current page hostname
+const WS_URL = (location.protocol==='https:'?'wss://':'ws://') + location.host;
+
+let ws=null, myIdx=null, myRoom=null, maxP=2;
+let gs=null, selCards=[], selMeld=null, isHost=false;
+
+function connect(cb){
+  ws=new WebSocket(WS_URL);
+  ws.onopen=cb;
+  ws.onmessage=e=>handle(JSON.parse(e.data));
+  ws.onerror=()=>showErr('Ne mogu se spojiti na server. Osvježi stranicu.');
+  ws.onclose=()=>{if(gs)toast('Veza prekinuta','err');};
+}
+
+function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
+
+function handle(msg){
+  if(msg.type==='toast'){toast(msg.msg,msg.toastType==='error'?'err':msg.toastType==='success'?'ok':'');return;}
+  if(msg.type==='error'){showErr(msg.msg);return;}
+  if(msg.type==='created'){myIdx=msg.playerIndex;myRoom=msg.roomCode;isHost=true;showWait(msg.roomCode);return;}
+  if(msg.type==='joined'){myIdx=msg.playerIndex;myRoom=msg.roomCode;showWait(msg.roomCode);return;}
+  if(msg.type==='state'){gs=msg;updateLobby(msg);if(msg.status==='playing')showGame(msg);return;}
+  if(msg.type==='matchEnd'){showMatchEnd(msg);return;}
+}
+
+// ---- LOBBY ----
+function switchTab(t){
+  document.getElementById('tab-c').classList.toggle('on',t==='c');
+  document.getElementById('tab-j').classList.toggle('on',t==='j');
+  document.getElementById('pane-c').classList.toggle('hidden',t!=='c');
+  document.getElementById('pane-j').classList.toggle('hidden',t!=='j');
+}
+function setMax(n){
+  maxP=n;
+  document.querySelectorAll('.cnt').forEach((b,i)=>b.classList.toggle('on',[2,3,4][i]===n));
+}
+function showErr(m){
+  const el=document.getElementById('errmsg');
+  el.textContent=m;setTimeout(()=>el.textContent='',4000);
+}
+function createRoom(){
+  const name=document.getElementById('my-name').value.trim();
+  if(!name){showErr('Unesi ime');return;}
+  connect(()=>send({type:'createRoom',name,maxPlayers:maxP}));
+}
+function joinRoom(){
+  const name=document.getElementById('my-name').value.trim();
+  const code=document.getElementById('room-code-inp').value.trim().toUpperCase();
+  if(!name){showErr('Unesi ime');return;}
+  if(code.length!==4){showErr('Kôd mora biti 4 slova');return;}
+  connect(()=>send({type:'joinRoom',name,roomCode:code}));
+}
+function showWait(code){
+  document.getElementById('main-box').classList.add('hidden');
+  document.getElementById('wait-box').classList.remove('hidden');
+  document.getElementById('code-show').textContent=code;
+}
+function updateLobby(state){
+  if(state.status!=='waiting'&&state.status!=='playing')return;
+  document.getElementById('wait-list').innerHTML=
+    state.players.map(p=>\`<div class="wait-p"><div class="wdot"></div>\${p.name}</div>\`).join('');
+  if(isHost&&state.players.length>=2&&state.status==='waiting')
+    document.getElementById('btn-start').classList.remove('hidden');
+}
+function startGame(){send({type:'startGame'});}
+
+// ---- GAME ----
+function showGame(state){
+  document.getElementById('lobby').classList.add('hidden');
+  document.getElementById('game').classList.remove('hidden');
+  renderGame(state);
+}
+
+function cpts(c){
+  if(c.isJoker)return 25;
+  if(['J','Q','K','A'].includes(c.rank))return 10;
+  return parseInt(c.rank);
+}
+function ccls(c){
+  if(c.isJoker)return 'j';
+  return['♥','♦'].includes(c.suit)?'r':'';
+}
+
+function renderGame(state){
+  if(!state)return;gs=state;
+  const me=state.players[myIdx];
+  const cur=state.players[state.currentTurn];
+  const mine=state.currentTurn===myIdx;
+
+  document.getElementById('g-round').textContent=\`Krug \${state.round} · Partija \${state.matchNum+1}\`;
+  const ini=cur.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('g-av').textContent=ini;
+  document.getElementById('g-name').textContent=mine?\`Ti (\${me.name})\`:cur.name;
+  document.getElementById('g-sub').textContent=cur.opened?'✓ Otvoren':'● Nije otvoren';
+  const phl={draw:'Vuci kartu',action:'Odaberi akciju',discard:'Baci kartu'};
+  document.getElementById('g-ph').textContent=phl[state.phase]||state.phase;
+  document.getElementById('dcnt').textContent=state.deckCount;
+
+  const dTop=state.discardTop;
+  document.getElementById('dis-vis').innerHTML=dTop
+    ?faceHTML(dTop,'cv face')
+    :\`<div class="edis">+</div>\`;
+
+  document.getElementById('oi-val').textContent=me.opened?'✓ Otvoren':'51+ bod';
+  const sp=selCards.reduce((s,c)=>s+cpts(c),0);
+  document.getElementById('oi-pts').textContent=\`Odabrano: \${sp} b\`;
+
+  renderMelds(state);
+  renderHand(me);
+  renderActions(state,mine);
+}
+
+function faceHTML(c,cls){
+  const col=ccls(c);
+  if(c.isJoker)return\`<div class="\${cls} j"><div>🃏</div><div class="jl">JKR</div></div>\`;
+  return\`<div class="\${cls} \${col}"><div>\${c.rank}</div><div>\${c.suit}</div></div>\`;
+}
+
+function renderMelds(state){
+  const w=document.getElementById('mwrap');
+  if(!state.tableMelds.length){
+    w.innerHTML=\`<div style="font-size:.73rem;color:var(--muted);font-style:italic;padding:.35rem 0">Još nema otvorenih kombinacija</div>\`;
+    return;
+  }
+  w.innerHTML=state.tableMelds.map((m,mi)=>{
+    const own=state.players[m.owner].name;
+    const s=selMeld===mi?'sel':'';
+    const t=m.type==='set'?'Set':'Skala';
+    const cards=m.cards.map(c=>{
+      const col=ccls(c);
+      if(c.isJoker)return\`<div class="mc j"><div class="jl">JKR</div></div>\`;
+      return\`<div class="mc \${col}"><div>\${c.rank}</div><div>\${c.suit}</div></div>\`;
+    }).join('');
+    return\`<div class="mr \${s}" onclick="togMeld(\${mi})">
+      <div class="mo"><span class="odot"></span>\${own} · \${t}</div>
+      <div class="mcr">\${cards}</div></div>\`;
+  }).join('');
+}
+
+function renderHand(me){
+  const h=me.hand||[];
+  document.getElementById('hcnt').textContent=\`\${h.length} kart\${h.length===1?'a':h.length<5?'e':'a'}\`;
+  document.getElementById('hcards').innerHTML=h.map(c=>{
+    const col=ccls(c);
+    const s=selCards.some(x=>x.id===c.id)?'s':'';
+    if(c.isJoker)return\`<div class="hc j \${s}" onclick="togCard(\${c.id})"><div class="hr">🃏</div><div class="jl">JKR</div></div>\`;
+    return\`<div class="hc \${col} \${s}" onclick="togCard(\${c.id})"><div class="hr">\${c.rank}</div><div class="hs">\${c.suit}</div></div>\`;
+  }).join('');
+}
+
+function renderActions(state,mine){
+  const aa=document.getElementById('aa');
+  if(!mine){
+    aa.innerHTML=\`<div class="nmt">Čekaj — na potezu je \${state.players[state.currentTurn].name}…</div>\`;
+    return;
+  }
+  const ph=state.phase,hasSel=selCards.length>0,hasMeld=selMeld!==null;
+  const me=state.players[myIdx];
+  let btns=[];
+  if(ph==='draw'){
+    btns=[
+      \`<button class="ab gold full" onclick="act('drawDeck')">🂠 Vuci iz špila</button>\`,
+      state.discardTop?\`<button class="ab blue full" onclick="act('drawDiscard')">↑ Uzmi s discarda</button>\`:'',
+    ];
+  } else if(ph==='discard'){
+    const ok=hasSel&&selCards.length===1;
+    btns=[
+      ok?\`<button class="ab red full" onclick="act('discard')">✕ Baci kartu (završi potez)</button>\`:\`<button class="ab gray full" disabled>Odaberi 1 kartu za baci</button>\`,
+      hasSel&&selCards.length>=3?\`<button class="ab green" onclick="act('playMeld')">▶ Otvori još</button>\`:\`<button class="ab gray" disabled>▶ Otvori još</button>\`,
+      hasSel&&hasMeld&&me.opened?\`<button class="ab blue" onclick="act('addToMeld')">+ Dodaj</button>\`:\`<button class="ab gray" disabled>+ Dodaj</button>\`,
+    ];
+  } else {
+    const cp=hasSel&&selCards.length>=3;
+    const ca=hasSel&&hasMeld&&me.opened;
+    const cs=hasSel&&selCards.length===1&&hasMeld&&me.opened;
+    const cd=hasSel&&selCards.length===1;
+    btns=[
+      cp?\`<button class="ab green" onclick="act('playMeld')">▶ Otvori kombinaciju</button>\`:\`<button class="ab gray" disabled>▶ Otvori kombinaciju</button>\`,
+      ca?\`<button class="ab blue" onclick="act('addToMeld')">+ Dodaj na meld</button>\`:\`<button class="ab gray" disabled>+ Dodaj na meld</button>\`,
+      cs?\`<button class="ab purple" onclick="act('swapJoker')">↔ Zamijeni Joker</button>\`:\`<button class="ab gray" disabled>↔ Zamijeni Joker</button>\`,
+      cd?\`<button class="ab red" onclick="act('discard')">✕ Baci na discard</button>\`:\`<button class="ab gray" disabled>✕ Baci (odaberi 1)</button>\`,
+    ];
+  }
+  aa.innerHTML=\`<div class="ag">\${btns.join('')}</div>\`;
+}
+
+function togCard(id){
+  if(!gs||gs.currentTurn!==myIdx)return;
+  const h=gs.players[myIdx].hand||[];
+  const c=h.find(x=>x.id===id);if(!c)return;
+  const i=selCards.findIndex(x=>x.id===id);
+  if(i>=0)selCards.splice(i,1);else selCards.push(c);
+  renderGame(gs);
+}
+function togMeld(mi){selMeld=selMeld===mi?null:mi;renderGame(gs);}
+
+function act(action){
+  if(!gs||gs.currentTurn!==myIdx){toast('Nije tvoj red!','err');return;}
+  send({type:'action',action,cardIds:selCards.map(c=>c.id),meldIndex:selMeld});
+  selCards=[];selMeld=null;
+}
+
+// ---- MATCH END ----
+function showMatchEnd(msg){
+  const ov=document.createElement('div');ov.className='ov';
+  const names=msg.players;
+  const rows=names.map((n,i)=>{
+    const s=msg.scores[i];
+    const cls=s<0?'sn':s>50?'sh':'';
+    const w=i===msg.winnerIdx?'<span class="wb">Pobjednik</span>':'';
+    return\`<div class="psr"><div style="display:flex;align-items:center;gap:6px"><span style="font-weight:600">\${n}</span>\${w}</div>
+      <span class="\${cls}" style="font-weight:700;font-size:1rem">\${s>0?'+':''}\${s}</span></div>\`;
+  }).join('');
+  let sp=msg.fromHand?\`<div style="background:rgba(201,168,76,.11);border:1px solid rgba(201,168,76,.26);border-radius:7px;padding:.5rem;margin-bottom:.7rem;font-size:.76rem;text-align:center;color:var(--gold-lt)">🌟 Zatvoreno iz ruke!</div>\`:'';
+  if(msg.isGameOver){
+    const sorted=names.map((n,i)=>({n,t:msg.totalScores[i]})).sort((a,b)=>a.t-b.t);
+    ov.innerHTML=\`<div class="mb"><div style="font-size:3rem;text-align:center;margin-bottom:.35rem">🏆</div>
+      <div style="font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--gold);text-align:center;margin-bottom:.2rem">\${sorted[0].n}</div>
+      <div style="font-size:.8rem;color:var(--muted);text-align:center;margin-bottom:1rem">Pobijedio s \${sorted[0].t} bodova</div>
+      <table class="stbl" style="margin-bottom:.9rem">
+        <tr><th>Rang</th><th>Igrač</th><th>Ukupno</th></tr>
+        \${sorted.map((p,i)=>\`<tr><td style="color:var(--muted)">\${i+1}.</td><td>\${p.n}</td><td class="st \${p.t<=0?'sn':p.t>100?'sh':''}">\${p.t>0?'+':''}\${p.t}</td></tr>\`).join('')}
+      </table>
+      <button class="mbt p" onclick="location.reload()">Nova igra</button></div>\`;
+  } else {
+    ov.innerHTML=\`<div class="mb"><div class="mt">Kraj Partije</div>\${sp}\${rows}
+      <div style="border-top:1px solid rgba(201,168,76,.12);padding-top:.6rem;margin-top:.45rem">
+        <table class="stbl"><tr><th>Igrač</th><th>Ukupno</th></tr>
+        \${names.map((n,i)=>\`<tr><td>\${n}</td><td class="st \${msg.totalScores[i]<0?'sn':''}">\${msg.totalScores[i]>0?'+':''}\${msg.totalScores[i]}</td></tr>\`).join('')}</table></div>
+      <div style="font-size:.7rem;color:var(--muted);text-align:center;margin-top:.55rem">Sljedeća partija za nekoliko sekundi…</div>
+      <button class="mbt s" onclick="this.closest('.ov').remove()">Zatvori</button></div>\`;
+  }
+  document.body.appendChild(ov);
+}
+
+function showScores(){
+  if(!gs)return;
+  const ov=document.createElement('div');ov.className='ov';
+  const{players,totalScores,scoreHistory}=gs;
+  const hist=scoreHistory[0].map((_,mi)=>
+    \`<tr><td style="color:var(--muted)">\${mi+1}</td>\${players.map((_,i)=>{const s=scoreHistory[i][mi];return\`<td class="\${s<0?'sn':s>50?'sh':''}">\${s>0?'+':''}\${s}</td>\`}).join('')}</tr>\`
+  ).join('');
+  ov.innerHTML=\`<div class="mb"><div class="mt">Rezultati</div>
+    <table class="stbl" style="margin-bottom:.7rem">
+      <tr><th>Ukupno</th>\${players.map(p=>\`<th>\${p.name}</th>\`).join('')}</tr>
+      <tr>\${totalScores.map((s,i)=>\`<td class="st \${s<0?'sn':''}">\${s>0?'+':''}\${s}</td>\`).join('')}</tr></table>
+    \${hist?\`<div style="font-size:.6rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:.28rem">Povijest</div>
+    <table class="stbl"><tr><th>#</th>\${players.map(p=>\`<th>\${p.name.split(' ')[0]}</th>\`).join('')}</tr>\${hist}</table>\`:''}
+    <button class="mbt s" onclick="this.closest('.ov').remove()">Zatvori</button></div>\`;
+  document.body.appendChild(ov);
+}
+
+let tt;
+function toast(msg,type=''){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.className=\`toast show \${type}\`;
+  clearTimeout(tt);tt=setTimeout(()=>el.classList.remove('show'),2600);
+}
+</script>
+</body>
+</html>
+`;
+
+app.get('/', (req, res) => res.send(INDEX_HTML));
+app.get('*', (req, res) => res.send(INDEX_HTML));
+
 
 // ============================================================
 // CARD ENGINE
@@ -328,5 +821,5 @@ wss.on('connection',(ws)=>{
   });
 });
 
-const PORT=process.env.PORT||10000;
+const PORT=process.env.PORT||3000;
 server.listen(PORT,()=>console.log(`DodigRemi running on port ${PORT}`));
